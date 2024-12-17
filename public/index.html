@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>OpenAI WebSocket Demo</title>
+    <style>
+        .chat-container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            margin: 10px 0;
+            resize: vertical;
+            font-size: 16px;
+            font-family: Arial, sans-serif;
+        }
+
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            min-height: 200px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="chat-container">
+        <div>
+            <label>
+                <input type="checkbox" id="realtimeMode"> リアルタイムモード
+            </label>
+        </div>
+        <div>
+            <textarea id="messageInput" placeholder="メッセージを入力"></textarea>
+            <button onclick="sendMessage()">送信</button>
+        </div>
+        <div id="output"></div>
+    </div>
+    <script>
+        const ws = new WebSocket('ws://localhost:3000/ws');
+        let typingTimer; // タイピング待機用タイマー
+        const TYPING_DELAY = 200; // タイピング待機時間（ミリ秒）
+
+        ws.onmessage = function (event) {
+            console.log(event);
+            // event.dataが既にBlobオブジェクトの場合は、テキストとして読み込む必要があります
+            if (event.data instanceof Blob) {
+                event.data.text().then(text => {
+                    console.log(text);
+                    const message = JSON.parse(text);
+                    const outputDiv = document.getElementById('output');
+
+                    if (message.type === 'response.text.delta') {
+                        outputDiv.innerHTML += message.delta;
+                    } else if (message.type === 'response.text.done') {
+                        outputDiv.innerHTML += '<br>';
+                    }
+                }).catch(error => {
+                    console.error('Error parsing message:', error);
+                });
+            }
+        };
+
+        // メッセージ送信関数を追加
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value;
+
+            if (message.trim()) {
+                ws.send(JSON.stringify({
+                    type: 'user.message',
+                    content: message
+                }));
+                input.value = ''; // 送信後に入力をクリア
+            }
+        }
+
+        // 入力フィールドのイベントリスナー
+        document.getElementById('messageInput').addEventListener('input', function(e) {
+            const realtimeMode = document.getElementById('realtimeMode').checked;
+            
+            if (realtimeMode) {
+                // 既存のタイマーをクリア
+                clearTimeout(typingTimer);
+                
+                // 新しいタイマーをセット
+                typingTimer = setTimeout(() => {
+                    const message = e.target.value;
+                    if (message.trim()) {
+                        ws.send(JSON.stringify({
+                            type: 'user.message',
+                            content: message
+                        }));
+                    }
+                }, TYPING_DELAY);
+            }
+        });
+
+        // Enterキーでの送信（リアルタイムモードがOFFの時のみ）
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            const realtimeMode = document.getElementById('realtimeMode').checked;
+            if (e.key === 'Enter' && !realtimeMode) {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+
+</html>
